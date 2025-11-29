@@ -13,7 +13,12 @@ from pydantic import BaseModel
 import uuid
 import os
 import requests
+import re
 from bs4 import BeautifulSoup
+import urllib3
+# InsecureRequestWarning 경고 메시지를 비활성화합니다.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="your-secret-key")
@@ -29,7 +34,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 GIMJE_NEWS_URL = "https://innovalley.smartfarmkorea.net/gimje/bbsArticle/list.do?bbsId=notice"
-BASE_URL = "https://innovalley.smartfarmkorea.net/gimje/index.do"
+BASE_URL = "https://innovalley.smartfarmkorea.net/gimje/bbsArticle/view.do"
 
 
 # 🚨 모델 정의 (database.py의 Base를 사용)
@@ -387,13 +392,16 @@ def delete_comment(request: Request, post_id: int, comment_id: int, db: Session 
 # -----------------------------------------------------------
 
 # 🚨 뉴스 크롤링 함수
+# main.py 파일에서 get_gimje_news 함수를 아래와 같이 대체해주세요.
+
 def get_gimje_news():
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
 
     try:
-        response = requests.get(GIMJE_NEWS_URL, timeout=10)  # 타임아웃 추가
+        # SSL 인증서 문제 해결을 위해 verify=False 사용
+        response = requests.get(GIMJE_NEWS_URL, headers=headers, timeout=10, verify=False)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -401,22 +409,31 @@ def get_gimje_news():
 
         gimje_news_list = []
 
+        # 상세 페이지 URL 구성을 위한 기본 경로
+        VIEW_BASE_URL = "https://innovalley.smartfarmkorea.net/gimje/bbsArticle/view.do"
+
         for row in rows:
             cols = row.find_all('td')
 
             if len(cols) >= 4:
-                # 0: 번호, 1: 구분, 2: 제목, 3: 작성일, 4: 조회
-
-                # 1. 제목 추출
                 title_tag = cols[2].find('a')
                 if not title_tag:
                     continue
 
                 title = title_tag.text.strip()
+                onclick_value = title_tag.get('onclick')
+                full_link = "#"  # 링크 추출 실패 시 기본값
 
-                # 2. 링크 추출
-                link = title_tag.get('href')
-                full_link = BASE_URL + link
+                if onclick_value:
+                    # 🚨 수정: fn_view(숫자); 형태에서 괄호 안의 숫자 하나만 추출
+                    # \d+는 하나 이상의 숫자를 의미합니다.
+                    match = re.search(r"fn_view\s*\(\s*(\d+)\s*\)", onclick_value)
+
+                    if match:
+                        nttSn = match.group(1)  # 추출된 숫자 (글번호)
+
+                        # 🚨 최종 링크 URL 조합: bbsId=notice는 BASE URL에 이미 포함
+                        full_link = f"{VIEW_BASE_URL}&nttSn={nttSn}"
 
                 # 3. 작성일 추출 (4번째 td, 인덱스 3)
                 date = cols[3].text.strip()
@@ -430,12 +447,10 @@ def get_gimje_news():
         return gimje_news_list
 
     except requests.exceptions.RequestException as e:
-        # 연결 오류, 타임아웃, 4xx/5xx HTTP 오류 등을 출력
         print(f"웹 크롤링 요청 오류 발생: {e}")
-        return []  # 오류 발생 시 빈 리스트 반환
+        return []
     except Exception as e:
-        # 파싱 중 오류 발생 (셀렉터 오류 등)
-        print(f"웹 파싱 오류 발생 (HTML 구조 확인 필요): {e}")
+        print(f"웹 파싱 오류 발생: {e}")
         return []
 
 
