@@ -106,18 +106,22 @@ def initialize_chatbot_system():
         페이지 이름(page_name)에 따라 미리 정의된 URL을 반환합니다.
         """
         url_map = {
-            "교육 안내": "https://innovalley.smartfarmkorea.net/gimje/con/contents.do?cmsSeq=26",
-            "시설 안내": "https://innovalley.smartfarmkorea.net/gimje/con/contents.do?cmsSeq=24",
-            "임대 안내": "https://innovalley.smartfarmkorea.net/gimje/con/contents.do?cmsSeq=25",
-            "찾아오시는 길": "https://innovalley.smartfarmkorea.net/gimje/con/contents.do?cmsSeq=28",
-            "공지": "https://innovalley.smartfarmkorea.net/gimje/bbsArticle/view.do?bbsId=notice&seq=246",
+            "실증단지 소개": "http://127.0.0.1:8000/about",
+            "온실 3D 모델링": "http://127.0.0.1:8000/datas",
+            "실시간 데이터": "http://127.0.0.1:8000/participate",
+            "의견 게시판": "http://127.0.0.1:8000/sns",
+            "AI 챗봇": "http://127.0.0.1:8000/aichat",
+            "입주 공고": "https://innovalley.smartfarmkorea.net/gimje/Demonstration/prv_application",
+            "문의하기": "http://127.0.0.1:8000/contact",
+            "공지·뉴스": "http://127.0.0.1:8000/news",
+            "장비실 3D 뷰어": "http://127.0.0.1:8000/equipment_viewer",
         }
         page_url = url_map.get(page_name)
 
         if page_url:
-            return f"요청하신 '{page_name}' 페이지로 바로 이동할 수 있는 URL입니다: {page_url}"
+            return f"[{page_name}]({page_url})"
         else:
-            return f"죄송합니다. '{page_name}'에 해당하는 페이지는 찾을 수 없습니다. 지원하는 페이지는 {', '.join(url_map.keys())} 입니다."
+            return f"'{page_name}' 페이지를 찾을 수 없습니다."
 
     global available_tools
     available_tools = {
@@ -201,22 +205,25 @@ async def chat(data: ChatRequest):
         # ---
 
         system_prompt = f"""
-            당신은 '김제 스마트팜 혁신밸리 실증단지' 상담 챗봇입니다.
-            주어진 정보와 도구를 사용하여 사용자 질문에 답변하세요.
+                    당신은 '김제 스마트팜 혁신밸리 실증단지' 상담 챗봇입니다.
+                    주어진 정보와 도구를 사용하여 사용자 질문에 답변하세요.
 
-            #중요 지침
-            1. **웹사이트 소개 요청 시**: 사용자가 **'웹사이트', '홈페이지', '소개', '기능'** 등에 대해 질문하면, 아래 **'--- 웹사이트 소개 ---'** 내용을 기반으로 5가지 핵심 기능(소개, 3D 모델링, 데이터, 게시판, 챗봇)을 포함하여 종합적으로 설명해야 합니다.
-            2. **지식 질문**: 다음 '제공된 문서'를 기반으로 답변하세요. 문서에 없으면 모른다고 하세요.
-            3. **기능 요청**: 페이지 이동 등 기능을 요청하면, 제공된 **도구(Tools)**를 사용하여 ID/이름을 추출하고 함수를 호출하세요.
-            4. **가격 및 수치**: 가격, 이용료 등 수치 정보 답변 시, 제공된 문서에 포함된 **단위**를 생략하지 말고 **완전한 문장**으로 답변에 포함해야 합니다.
-            5. **정보의 활용**: 검색된 문서를 그대로 인용하되, 사용자 친화적인 설명 형태로 포장하여 전달해야 합니다.
+                    #중요 지침
+                    1. **웹사이트 소개 요청 시**: 사용자가 **'웹사이트', '홈페이지', '소개', '기능'** 등에 대해 질문하면, 아래 **'--- 웹사이트 소개 ---'** 내용을 기반으로 5가지 핵심 기능(소개, 3D 모델링, 데이터, 게시판, 챗봇)을 포함하여 종합적으로 설명해야 합니다.
+                    2. **지식 질문**: 다음 '제공된 문서'를 기반으로 답변하세요. 문서에 없으면 모른다고 하세요.
+                    3. **기능 요청**: 페이지 이동 등 기능을 요청하면, 제공된 **도구(Tools)**를 사용하여 ID/이름을 추출하고 함수를 호출하세요.
+                    4. **가격 및 수치**: 가격, 이용료 등 수치 정보 답변 시, 제공된 문서에 포함된 **단위**를 생략하지 말고 **완전한 문장**으로 답변에 포함해야 합니다.
+                    5. **정보의 활용**: 검색된 문서를 그대로 인용하되, 사용자 친화적인 설명 형태로 포장하여 전달해야 합니다.
+                    6. **링크 표시**: navigate_to_page 도구의 결과는 [페이지명](URL) 형식으로 반환됩니다. 
+                       이를 자연스러운 문장에 포함하세요.
+                       예시: "요청하신 [온실 3D 모델링](/datas) 페이지에서 확인하실 수 있습니다."
 
-            --- 웹사이트 소개 ---
-            {website_intro} # 이 변수는 이미 위에서 5가지 기능을 포함하고 있습니다.
-            --- 제공된 문서 ---
-            {context}
-            ---
-            """
+                    --- 웹사이트 소개 ---
+                    {website_intro} # 이 변수는 이미 위에서 5가지 기능을 포함하고 있습니다.
+                    --- 제공된 문서 ---
+                    {context}
+                    ---
+                    """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
